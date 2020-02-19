@@ -1555,15 +1555,6 @@ Element["" "TC2030-NL" "J2" "unknown" 1015.00mil 1330.00mil -20.86mil -25.86mil 
 
 	)
 
-Element["" "0805" "R8" "1k" 850.00mil 3490.00mil -25.00mil 35.00mil 0 100 ""]
-(
-	Pad[-35.43mil -3.93mil -35.43mil 3.93mil 51.18mil 20.00mil 57.18mil "1" "1" "square"]
-	Pad[35.43mil -3.93mil 35.43mil 3.93mil 51.18mil 20.00mil 57.18mil "2" "2" "square"]
-	ElementLine [-3.93mil -27.55mil 3.93mil -27.55mil 10.00mil]
-	ElementLine [-3.93mil 27.55mil 3.93mil 27.55mil 10.00mil]
-
-	)
-
 Element["" "SOD123T" "D1" "unknown" 955.00mil 200.00mil 75.00mil -105.00mil 0 100 ""]
 (
 	Pad[-10.00mil 65.00mil 10.00mil 65.00mil 55.00mil 20.00mil 61.00mil "1" "1" "square"]
@@ -1573,6 +1564,15 @@ Element["" "SOD123T" "D1" "unknown" 955.00mil 200.00mil 75.00mil -105.00mil 0 10
 	ElementLine [-48.00mil -105.00mil 48.00mil -105.00mil 10.00mil]
 	ElementLine [-48.00mil 105.00mil 48.00mil 105.00mil 10.00mil]
 	ElementLine [-48.00mil -25.00mil 48.00mil -25.00mil 10.00mil]
+
+	)
+
+Element["" "0805" "R1" "1k" 845.00mil 3490.00mil 33.50mil 33.50mil 0 100 ""]
+(
+	Pad[-35.43mil -3.93mil -35.43mil 3.93mil 51.18mil 20.00mil 57.18mil "1" "1" "square"]
+	Pad[35.43mil -3.93mil 35.43mil 3.93mil 51.18mil 20.00mil 57.18mil "2" "2" "square"]
+	ElementLine [-3.93mil -27.55mil 3.93mil -27.55mil 10.00mil]
+	ElementLine [-3.93mil 27.55mil 3.93mil 27.55mil 10.00mil]
 
 	)
 Layer(1 "top" "copper")
@@ -2354,6 +2354,7 @@ NetList()
 		Connect("J12-2")
 		Connect("J13-2")
 		Connect("J14-2")
+		Connect("R1-2")
 		Connect("R2-1")
 		Connect("R2-2")
 		Connect("R2-3")
@@ -2366,7 +2367,6 @@ NetList()
 		Connect("R4-2")
 		Connect("R4-3")
 		Connect("R4-4")
-		Connect("R8-2")
 		Connect("U1-1")
 		Connect("U2-4")
 		Connect("U2-18")
@@ -2657,6 +2657,6 @@ NetList()
 	Net("unnamed_net20" "(unknown)")
 	(
 		Connect("D2-2")
-		Connect("R8-1")
+		Connect("R1-1")
 	)
 )

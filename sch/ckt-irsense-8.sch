@@ -1056,7 +1056,7 @@ device=RESISTOR
 T 38500 55100 5 10 0 0 90 0 1
 footprint=0805
 T 38600 55500 5 10 1 1 0 0 1
-refdes=R8
+refdes=R1
 T 38600 55300 5 10 1 1 0 0 1
 value=1k
 }
