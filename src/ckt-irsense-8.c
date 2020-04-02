@@ -47,8 +47,19 @@ LICENSE:
 #define   SDA_7   PB6
 #define   SDA_8   PB7
 
-#define ON_DEBOUNCE_DEFAULT     1
-#define OFF_DEBOUNCE_DEFAULT    20
+#define INVERT_OUTPUTS  (PA2)
+
+#define OUTPUT_1  (PC0)
+#define OUTPUT_2  (PC1)
+#define OUTPUT_3  (PC2)
+#define OUTPUT_4  (PC3)
+#define OUTPUT_5  (PC4)
+#define OUTPUT_6  (PC5)
+#define OUTPUT_7  (PD0)
+#define OUTPUT_8  (PD1)
+
+volatile uint8_t readSensors = 0;
+volatile uint8_t masterFlash = 0;
 
 
 static void sda_low() 
@@ -200,7 +211,7 @@ void initializeTMD26711()
 	writeByte(TMD26711_ADDR, 0x80|0x00, 0x27);   // Power ON, Enable proximity, Enable proximity interrupt (not used currently)
 }
 
-void readTMD26711s(uint8_t* detectorState, uint8_t* failState)
+void readTMD26711s(uint8_t* detectorState, uint8_t* failState, int16_t onDelayCount, int16_t offDelayCount)
 {
 	static uint8_t sensorError[8] = {0,0,0,0,0,0,0,0};
 	static bool detect[8] = {false, false, false, false, false, false, false, false};
@@ -247,7 +258,7 @@ void readTMD26711s(uint8_t* detectorState, uint8_t* failState)
 		if(!detect[i] && (proximity[i] >= PROXIMITY_THRESHOLD))
 		{
 			// ON debounce
-			if(++count[i] > ON_DEBOUNCE_DEFAULT)
+			if(++count[i] > onDelayCount)
 			{
 				detect[i] = true;
 				count[i] = 0;
@@ -261,7 +272,7 @@ void readTMD26711s(uint8_t* detectorState, uint8_t* failState)
 		else if(detect[i] && (proximity[i] < PROXIMITY_THRESHOLD))
 		{
 			// OFF debounce
-			if(++count[i] > OFF_DEBOUNCE_DEFAULT)
+			if(++count[i] > offDelayCount)
 			{
 				detect[i] = false;
 				count[i] = 0;
@@ -273,16 +284,6 @@ void readTMD26711s(uint8_t* detectorState, uint8_t* failState)
 	}
 }
 
-#define INVERT_OUTPUTS  (PA2)
-
-#define OUTPUT_1  (PC0)
-#define OUTPUT_2  (PC1)
-#define OUTPUT_3  (PC2)
-#define OUTPUT_4  (PC3)
-#define OUTPUT_5  (PC4)
-#define OUTPUT_6  (PC5)
-#define OUTPUT_7  (PD0)
-#define OUTPUT_8  (PD1)
 
 void setOutputs(uint8_t outputState)
 {
@@ -299,8 +300,6 @@ void initialize100HzTimer(void)
 	TIMSK0 |= _BV(OCIE0A);
 }
 
-volatile uint8_t readSensors = 0;
-volatile uint8_t masterFlash = 0;
 
 ISR(TIMER0_COMPA_vect)
 {
@@ -316,20 +315,42 @@ ISR(TIMER0_COMPA_vect)
 		masterFlash ^= 0xFF;
 }
 
-int main(void)
+uint8_t debounceInputs(uint8_t* ioState, uint8_t rawInput)
 {
-	// Deal with watchdog first thing
-	MCUSR = 0;              // Clear reset status
-	wdt_reset();            // Reset the WDT, just in case it's still enabled over reset
-	wdt_enable(WDTO_1S);    // Enable it at a 1S timeout.
+	static uint8_t clock_A=0, clock_B=0;
+	uint8_t delta = rawInput ^ *ioState;
+	uint8_t changes;
 
-	CLKPR = _BV(CLKPCE);
-	CLKPR = 0x00;
+	clock_A ^= clock_B;                     //Increment the counters
+	clock_B  = ~clock_B;
+	clock_A &= delta;                       //Reset the counters if no changes
+	clock_B &= delta;                       //were detected.
+	changes = ~((~delta) | clock_A | clock_B);
+	*ioState ^= changes;	
 
-	cli();
+	return(changes);
+}
 
-	initialize100HzTimer();
+void recalculateSensorOffDelay(int16_t *offDebounceCount)
+{
+	static int16_t adc = 0, adc_filt = 0;
+	
+	while(ADCSRA & _BV(ADSC));  // Wait for the ADC if it isn't done yet - should never happen
+	adc = ADC;
+	adc_filt = adc_filt + ((adc - adc_filt) / 4);
+	
+	*offDebounceCount = ((1023 - adc_filt) - 100 + 2) / 4;  // Invert, shift, divide-by-4, round
+	if(*offDebounceCount < 1)
+		*offDebounceCount = 1;  // Limit to 1
 
+#ifdef LONG_DELAY
+	*offDebounceCount *= 60;
+#endif
+	ADCSRA |= _BV(ADSC);  // Trigger next ADC conversion
+}
+
+inline void initializeIO()
+{
 	DDRB = 0x00;     // PORTB is all the I2C inputs
 	PORTB = _BV(SDA_1) | _BV(SDA_2) | _BV(SDA_3) | _BV(SDA_4) | _BV(SDA_5) | _BV(SDA_6) | _BV(SDA_7) | _BV(SDA_8);    // Enable pullup
 
@@ -341,12 +362,39 @@ int main(void)
 	
 	DDRD = 0xFF; // Everything's an output
 	PORTD = 0x00; // And they're all low
+}
+
+inline void initializeADC()
+{
+	ADCSRA = _BV(ADEN) | _BV(ADPS2) | _BV(ADPS1); // Enable ADC, set div/64 clock (125kHz)
+	DIDR0 = _BV(ADC6D); // Make ADC6 an analog input
+	ADMUX = _BV(REFS0) | _BV(MUX2) | _BV(MUX1); // Set to VCC reference and channel ADC6
+	ADCSRA |= _BV(ADSC);  // Trigger next ADC conversion
+}
+
+int main(void)
+{
+	uint8_t inputState=0;
 	
+	int16_t onDelayCount = ON_DEBOUNCE_DEFAULT, offDelayCount = ON_DEBOUNCE_DEFAULT;  // Signed so the math for off_debounce doesn't wrap
+	
+	// Deal with watchdog first thing
+	MCUSR = 0;              // Clear reset status
+	wdt_reset();            // Reset the WDT, just in case it's still enabled over reset
+	wdt_enable(WDTO_1S);    // Enable it at a 1S timeout.
+
+	CLKPR = _BV(CLKPCE);
+	CLKPR = 0x00;
+
+	cli();
+
+	initialize100HzTimer();
+	initializeIO();
+	initializeADC();
 	initializeTMD26711();
 
-//	ADCSRA = _BV(ADEN) | _BV(ADPS2) | _BV(ADPS1); // Enable ADC, set div/64 clock (125kHz)
-	DIDR0 = _BV(ADC6D); // Make ADC6 an analog input
-//	ADMUX = _BV(REFS0) | _BV(MUX2) | _BV(MUX1); // Set to VCC reference and channel ADC6
+	// Get the initial state of the "invert outputs" input so that we don't glitch coming up
+	inputState = PINA & _BV(INVERT_OUTPUTS);
 
 	sei();
 
@@ -359,12 +407,24 @@ int main(void)
 			uint8_t detectorState = 0, errorState = 0;
 			uint8_t outputState = 0;
 			
-			readTMD26711s(&detectorState, &errorState);
+			// Read "invert output" bit and deglitch
+			debounceInputs(&inputState, (PINA & _BV(INVERT_OUTPUTS)));
+
+			recalculateSensorOffDelay(&offDelayCount);
+
+			// Read sensors
+			readTMD26711s(&detectorState, &errorState, onDelayCount, offDelayCount);
+
+			// Calculate output state
+			if (!(inputState & _BV(INVERT_OUTPUTS)))
+				detectorState ^= 0xFF;
 
 			outputState = detectorState & ~(errorState); // Only get real outputs from sensors in non-error
 			outputState |= (errorState & masterFlash); // Add flashing for all sensors in error
 			setOutputs(outputState);
+
 			readSensors = 0;
+			
 		}
 	}
 }
